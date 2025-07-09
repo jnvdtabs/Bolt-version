@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Users, Database, Mail, FileDown, UserPlus, BookOpen, Plus, Edit, Trash2, TestTube } from 'lucide-react';
+import { Settings, Users, Database, Mail, FileDown, UserPlus, Plus, Edit, Trash2, TestTube, BookOpen, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 import { useDatabase } from '@/hooks/useDatabase';
@@ -20,6 +20,7 @@ const AdminDashboard = () => {
     loading, 
     addTeacher, 
     getSystemStats,
+    getAttendanceRecords,
     fetchStudents,
     fetchTeachers 
   } = useDatabase();
@@ -37,16 +38,12 @@ const AdminDashboard = () => {
     totalStudents: 0,
     totalTeachers: 0,
     totalClasses: 0,
+    pendingApprovals: 0,
     lastUpdated: new Date().toISOString()
   });
-  const [recentExports, setRecentExports] = useState([
-    { id: 1, type: 'Weekly Report', date: '2024-07-01', status: 'completed' },
-    { id: 2, type: 'Monthly Analysis', date: '2024-06-30', status: 'completed' },
-    { id: 3, type: 'Class-wise Report', date: '2024-06-28', status: 'completed' },
-  ]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
 
   useEffect(() => {
-    // Load system stats when data changes
     const loadStats = async () => {
       const stats = await getSystemStats();
       if (stats) {
@@ -54,11 +51,16 @@ const AdminDashboard = () => {
       }
     };
     
-    // Always load initial data
-    fetchStudents();
-    fetchTeachers();
-    loadStats();
-  }, [getSystemStats, fetchStudents, fetchTeachers]);
+    const loadAttendance = async () => {
+      const records = await getAttendanceRecords();
+      setAttendanceRecords(records);
+    };
+
+    if (!loading) {
+      loadStats();
+      loadAttendance();
+    }
+  }, [loading, getSystemStats, getAttendanceRecords]);
 
   const exportToCSV = (data: any[], headers: string[], filename: string) => {
     const csvContent = [
@@ -95,15 +97,23 @@ const AdminDashboard = () => {
             `JNV_Teachers_${date}.csv`
           );
           break;
+        case 'attendance':
+          exportToCSV(
+            attendanceRecords,
+            ['date', 'class_name', 'present', 'created_at'],
+            `JNV_Attendance_${date}.csv`
+          );
+          break;
         case 'all':
-          // Export both students and teachers in one file
+          // Export all data in one file
           const allData = [
             ...students.map(s => ({ ...s, type: 'student' })),
-            ...teachers.map(t => ({ ...t, type: 'teacher' }))
+            ...teachers.map(t => ({ ...t, type: 'teacher' })),
+            ...attendanceRecords.map(a => ({ ...a, type: 'attendance' }))
           ];
           exportToCSV(
             allData,
-            ['type', 'full_name', 'roll_no', 'role', 'class', 'section', 'subject', 'department', 'created_at'],
+            ['type', 'full_name', 'roll_no', 'role', 'class', 'section', 'subject', 'department', 'date', 'present', 'created_at'],
             `JNV_Complete_Export_${date}.csv`
           );
           break;
@@ -176,6 +186,9 @@ const AdminDashboard = () => {
         department: ''
       });
       setShowAddTeacher(false);
+      
+      // Refresh data
+      fetchTeachers();
     } catch (error) {
       toast({
         title: "Error",
@@ -193,6 +206,18 @@ const AdminDashboard = () => {
     });
   };
 
+  if (loading) {
+    return (
+      <Layout userRole="admin">
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-netflix-red mx-auto mb-4"></div>
+            <p className="text-netflix-text">Loading dashboard...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
   return (
     <Layout userRole="admin">
       <div className="space-y-6">
@@ -244,10 +269,10 @@ const AdminDashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-netflix-muted">Attendance Records</p>
-                  <p className="text-2xl font-bold text-netflix-text">0</p>
+                  <p className="text-sm font-medium text-netflix-muted">Pending Approvals</p>
+                  <p className="text-2xl font-bold text-netflix-text">{systemStats.pendingApprovals}</p>
                 </div>
-                <Database className="h-8 w-8 text-purple-500" />
+                <BarChart3 className="h-8 w-8 text-purple-500" />
               </div>
             </CardContent>
           </Card>
@@ -347,6 +372,13 @@ const AdminDashboard = () => {
               )}
 
               <div className="space-y-3">
+                {teachers.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="h-12 w-12 text-netflix-muted mx-auto mb-4" />
+                    <p className="text-netflix-muted">No teachers found</p>
+                    <p className="text-sm text-netflix-muted">Add teachers to get started</p>
+                  </div>
+                ) : (
                 {teachers.map((teacher) => (
                   <div key={teacher.id} className="flex items-center justify-between p-3 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
                     <div>
@@ -354,8 +386,12 @@ const AdminDashboard = () => {
                       <p className="text-sm text-netflix-muted">{teacher.role} • {teacher.subject || 'No subject'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-green-400 border-green-400">
-                        Active
+                      <Badge variant={teacher.approved ? "default" : "destructive"} className={
+                        teacher.approved 
+                          ? "text-green-400 border-green-400" 
+                          : "text-yellow-400 border-yellow-400"
+                      }>
+                        {teacher.approved ? 'Active' : 'Pending'}
                       </Badge>
                       <Button 
                         size="sm" 
@@ -368,6 +404,7 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 ))}
+                )}
               </div>
             </CardContent>
           </Card>
@@ -401,6 +438,15 @@ const AdminDashboard = () => {
                   >
                     <FileDown className="h-4 w-4 mr-2" />
                     Export Teachers Data
+                  </Button>
+                  
+                  <Button 
+                    onClick={() => handleExportData('attendance')}
+                    className="w-full justify-start bg-netflix-light-gray/20 hover:bg-netflix-light-gray/40 text-netflix-text border border-netflix-light-gray transition-netflix"
+                    variant="outline"
+                  >
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Export Attendance Data
                   </Button>
                   
                   <Button 
@@ -451,25 +497,41 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Recent Exports */}
+        {/* Recent Activity */}
         <Card className="bg-netflix-gray shadow-netflix border border-netflix-light-gray">
           <CardHeader>
-            <CardTitle className="text-netflix-text">Recent Exports</CardTitle>
-            <CardDescription className="text-netflix-muted">Latest data export history</CardDescription>
+            <CardTitle className="text-netflix-text">Recent Activity</CardTitle>
+            <CardDescription className="text-netflix-muted">Latest system activity and updates</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {recentExports.map((export_item) => (
-                <div key={export_item.id} className="flex items-center justify-between p-4 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
-                  <div>
-                    <p className="font-medium text-netflix-text">{export_item.type}</p>
-                    <p className="text-sm text-netflix-muted">{export_item.date}</p>
-                  </div>
-                  <Badge variant="outline" className="text-green-400 border-green-400">
-                    {export_item.status}
-                  </Badge>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
+                <div>
+                  <p className="font-medium text-netflix-text">System Status</p>
+                  <p className="text-sm text-netflix-muted">All systems operational</p>
                 </div>
-              ))}
+                <Badge variant="outline" className="text-green-400 border-green-400">
+                  Online
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
+                <div>
+                  <p className="font-medium text-netflix-text">Database</p>
+                  <p className="text-sm text-netflix-muted">Connected to Supabase</p>
+                </div>
+                <Badge variant="outline" className="text-green-400 border-green-400">
+                  Connected
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
+                <div>
+                  <p className="font-medium text-netflix-text">Last Updated</p>
+                  <p className="text-sm text-netflix-muted">{new Date(systemStats.lastUpdated).toLocaleString()}</p>
+                </div>
+                <Badge variant="outline" className="text-blue-400 border-blue-400">
+                  Recent
+                </Badge>
+              </div>
             </div>
           </CardContent>
         </Card>

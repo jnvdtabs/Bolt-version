@@ -273,7 +273,7 @@ export const useDatabase = () => {
     try {
       const [studentsCount, teachersCount, pendingCount] = await Promise.all([
         supabase.from('students').select('id', { count: 'exact', head: true }),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('approved', true),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('pending_approvals').select('id', { count: 'exact', head: true }).eq('processed', false)
       ]);
       
@@ -296,6 +296,23 @@ export const useDatabase = () => {
         lastUpdated: new Date().toISOString()
       };
     }
+  };
+
+  // Get attendance records
+  const getAttendanceRecords = async () => {
+    if (!session) return [];
+    
+    const { data, error } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching attendance records:', error);
+      return [];
+    }
+    
+    return data || [];
   };
 
   // Load data when user session changes
@@ -322,6 +339,7 @@ export const useDatabase = () => {
     rejectUser,
     sendAdminNotification,
     fetchStudents,
-    fetchTeachers
+    fetchTeachers,
+    getAttendanceRecords
   };
 };
