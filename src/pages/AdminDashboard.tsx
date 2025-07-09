@@ -379,7 +379,7 @@ const AdminDashboard = () => {
                     <p className="text-sm text-netflix-muted">Add teachers to get started</p>
                   </div>
                 ) : (
-                {teachers.map((teacher) => (
+                teachers.map((teacher) => (
                   <div key={teacher.id} className="flex items-center justify-between p-3 bg-netflix-light-gray/10 rounded-lg border border-netflix-light-gray/30">
                     <div>
                       <p className="font-medium text-netflix-text">{teacher.full_name}</p>
@@ -404,7 +404,6 @@ const AdminDashboard = () => {
                     </div>
                   </div>
                 ))}
-                )}
               </div>
             </CardContent>
           </Card>
